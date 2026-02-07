@@ -1,14 +1,17 @@
-from core import Player
-from game_logic import OFCGame
-from ai_strategy import AIPlayer, AIStrategy, RLAIPlayer
+from game.player import Player
+from game.ofc_game import OFCGame
+from ai.ai_player import AIPlayer
 from ui import GameUI
 from fantasy_mode import FantasyModeManager
+
+# 由于AIStrategy可能不存在，暂时注释掉
+# from ai_strategy import AIStrategy
 
 class OFCGameManager:
     def __init__(self):
         self.game = OFCGame()
         self.ui = GameUI()
-        self.ai_strategy = AIStrategy()
+        self.ai_strategy = None  # 暂时设为None
         self.fantasy_manager = FantasyModeManager(self.game, self.ui, self.ai_strategy)
         self.player = None
         self.ai_player = None
@@ -26,8 +29,8 @@ class OFCGameManager:
         self.game.players = []
         
         # 创建玩家
-        self.player = Player("玩家a", 1000)
-        self.ai_player = RLAIPlayer(f"AI (中等)", skip_learning=skip_learning)
+        self.player = Player("玩家a")
+        self.ai_player = AIPlayer(f"AI (中等)", strategy_type="heuristic")
         
         # 重置累计积分
         self.player.total_score = 0
@@ -190,7 +193,7 @@ class OFCGameManager:
             print(f"准备发第 {round_num} 轮牌...")
             
             # 保存当前轮次
-            self.game.table.round = round_num
+            self.game.current_round = round_num
             self.game.deal_round()
             print("发牌完成！")
             
@@ -218,7 +221,8 @@ class OFCGameManager:
             self.game.start_game()
             
             # 检查范特西模式
-            self.game.check_fantasy_mode()
+            for player in self.game.players:
+                self.game.check_fantasy_mode(player)
             
             # 检查是否有玩家进入范特西模式
             has_fantasy_players = any(player.fantasy_mode for player in self.game.players)
@@ -236,8 +240,9 @@ class OFCGameManager:
             
             # 发第一轮牌
             print("\n发第一轮牌...")
-            self.game.table.round = 1
-            self.game.deal_round()
+            # 不需要再次发牌，因为start_game已经调用了deal_first_round方法
+            # self.game.current_round = 1
+            # self.game.deal_round()
             
             # 摆牌阶段
             print("\n摆牌阶段...")
@@ -272,10 +277,12 @@ class OFCGameManager:
             
             # 确定获胜者
             winner = self.game.determine_winner()
+            # 显示获胜者和得分
             self.ui.display_winner(winner, self.game)
             
             # 保存游戏记录
-            self.game.save_game_record()
+            # 由于OFCGame类没有save_game_record方法，暂时注释掉
+            # self.game.save_game_record()
             
             # AI从游戏中学习
             if hasattr(self.ai_player, 'learn_from_game'):
@@ -294,7 +301,8 @@ class OFCGameManager:
                     player.last_top_hand = player.hand['top']
             
             # 检查是否进入Fantasy Land模式
-            self.game.check_fantasy_mode()
+            for player in self.game.players:
+                self.game.check_fantasy_mode(player)
             # 检查是否有玩家进入范特西模式
             has_fantasy_players = any(player.fantasy_mode for player in self.game.players)
             if has_fantasy_players:

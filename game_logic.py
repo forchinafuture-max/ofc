@@ -1,10 +1,12 @@
 from core import Card, Deck, Player, Table
+from rule_engine import RuleEngine
 
 class OFCGame:
     def __init__(self):
         self.deck = Deck()
         self.players = []
         self.table = Table()
+        self.rule_engine = RuleEngine()
     
     def add_player(self, player):
         self.players.append(player)
@@ -52,107 +54,20 @@ class OFCGame:
         print(f"发牌完成，轮次保持为: {self.table.round}")
     
     def evaluate_hand(self, cards):
-        # 评估手牌强度
-        if len(cards) == 3:
-            return self.evaluate_3_card_hand(cards)
-        elif len(cards) == 5:
-            return self.evaluate_5_card_hand(cards)
-        else:
-            return 0
+        # 评估手牌强度，委托给规则引擎
+        return self.rule_engine.evaluate_hand(cards)
     
     def evaluate_3_card_hand(self, cards):
-        # 评估3张牌的手牌
-        if len(cards) < 3:
-            return 0
-        
-        ranks = [card.value for card in cards]
-        suits = [card.suit for card in cards]
-        
-        # 检查同花
-        is_flush = all(suit == suits[0] for suit in suits)
-        
-        # 检查顺子
-        ranks.sort()
-        is_straight = True
-        for i in range(1, len(ranks)):
-            if ranks[i] != ranks[i-1] + 1:
-                is_straight = False
-                break
-        
-        # 检查牌型
-        rank_counts = {}
-        for rank in ranks:
-            rank_counts[rank] = rank_counts.get(rank, 0) + 1
-        
-        counts = sorted(rank_counts.values(), reverse=True)
-        
-        if counts == [3]:
-            return 2  # 三条
-        elif counts == [2, 1]:
-            return 1  # 一对
-        else:
-            return 0  # 高牌
+        # 评估3张牌的手牌，委托给规则引擎
+        return self.rule_engine.evaluate_3_card_hand(cards)
     
     def evaluate_5_card_hand(self, cards):
-        # 评估5张牌的手牌
-        if len(cards) < 5:
-            return 0
-        
-        ranks = [card.value for card in cards]
-        suits = [card.suit for card in cards]
-        
-        # 检查同花
-        is_flush = all(suit == suits[0] for suit in suits)
-        
-        # 检查顺子
-        ranks.sort()
-        is_straight = True
-        for i in range(1, len(ranks)):
-            if ranks[i] != ranks[i-1] + 1:
-                is_straight = False
-                break
-        
-        # 检查牌型
-        rank_counts = {}
-        for rank in ranks:
-            rank_counts[rank] = rank_counts.get(rank, 0) + 1
-        
-        counts = sorted(rank_counts.values(), reverse=True)
-        
-        if is_straight and is_flush:
-            # 检查皇家同花顺
-            if ranks == [10, 11, 12, 13, 14]:
-                return 9  # 皇家同花顺
-            return 8  # 同花顺
-        elif counts == [4, 1]:
-            return 7  # 四条
-        elif counts == [3, 2]:
-            return 6  # 葫芦
-        elif is_flush:
-            return 5  # 同花
-        elif is_straight:
-            return 4  # 顺子
-        elif counts == [3, 1, 1]:
-            return 3  # 三条（大于两队）
-        elif counts == [2, 2, 1]:
-            return 2  # 两对
-        elif counts == [2, 1, 1, 1]:
-            return 1  # 一对
-        else:
-            return 0  # 高牌
+        # 评估5张牌的手牌，委托给规则引擎
+        return self.rule_engine.evaluate_5_card_hand(cards)
     
     def compare_hands(self, hand1, hand2):
-        # 比较两手牌的大小
-        score1 = self.evaluate_hand(hand1)
-        score2 = self.evaluate_hand(hand2)
-        
-        if score1 > score2:
-            return 1
-        elif score1 < score2:
-            return -1
-        else:
-            # 分数相同时，根据牌型进行详细比较
-            return self._compare_same_strength_hands(hand1, hand2)
+        # 比较两手牌的大小，委托给规则引擎
+        return self.rule_engine.compare_hands(hand1, hand2)
     
     def _compare_same_strength_hands(self, hand1, hand2):
         # 比较相同强度值的手牌
@@ -189,34 +104,8 @@ class OFCGame:
         return 0
     
     def check_busted(self, player):
-        # 检查是否爆牌
-        if len(player.hand['top']) < 3 or len(player.hand['middle']) < 5 or len(player.hand['bottom']) < 5:
-            return True
-        
-        # 计算牌型强度
-        top_strength = self.evaluate_hand(player.hand['top'])
-        middle_strength = self.evaluate_hand(player.hand['middle'])
-        bottom_strength = self.evaluate_hand(player.hand['bottom'])
-        
-        # 比较顶部和中部
-        if top_strength > middle_strength:
-            return True
-        elif top_strength == middle_strength:
-            # 牌型强度相同时，比较具体牌值
-            top_vs_middle = self.compare_hands(player.hand['top'], player.hand['middle'])
-            if top_vs_middle > 0:
-                return True
-        
-        # 比较中部和底部
-        if middle_strength > bottom_strength:
-            return True
-        elif middle_strength == bottom_strength:
-            # 牌型强度相同时，比较具体牌值
-            middle_vs_bottom = self.compare_hands(player.hand['middle'], player.hand['bottom'])
-            if middle_vs_bottom > 0:
-                return True
-        
-        return False
+        # 检查是否爆牌，委托给规则引擎
+        return self.rule_engine.check_busted(player)
     
     def calculate_score(self, player1, player2):
         # 计算两个玩家之间的得分
@@ -528,18 +417,8 @@ class OFCGame:
                         print(f"{player.name}上一局没有完整的顶部手牌，不进入范特西模式")
     
     def check_fantasy_stay_condition(self, player):
-        """检查玩家是否满足留在范特西模式的条件"""
-        # 检查底部区域是否有4条或以上强度的牌型
-        bottom_strength = self.evaluate_hand(player.hand['bottom'])
-        if bottom_strength >= 7:  # 四条强度为7
-            return True
-        
-        # 检查顶部区域是否有三条或以上
-        top_strength = self.evaluate_hand(player.hand['top'])
-        if top_strength >= 2:  # 三条强度为2
-            return True
-        
-        return False
+        """检查玩家是否满足留在范特西模式的条件，委托给规则引擎"""
+        return self.rule_engine.check_fantasy_stay_condition(player)
     
     def determine_winner(self):
         # 确定游戏 winner

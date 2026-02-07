@@ -368,14 +368,6 @@ class RLAIPlayer(AIPlayer):
             'bottom': self.hand.get('bottom', [])
         }
     
-    def decide_action(self, game):
-        """
-        使用强化学习进行下注决策
-        """
-        # 这里可以扩展为使用强化学习进行下注决策
-        # 暂时使用父类的决策逻辑
-        return super().decide_action(game)
-    
     def check_high_pairs(self, cards):
         """
         检查是否有AA/KK/QQ高对子

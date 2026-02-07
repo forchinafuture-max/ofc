@@ -332,8 +332,14 @@ class OFCPoker:
         if len(self.players) == 2:
             score1 = self.calculate_score(self.players[0], self.players[1])
             if score1 > 0:
+                # 玩家0获胜，更新积分
+                self.players[0].total_score += score1
+                self.players[1].total_score -= score1
                 return self.players[0]
             else:
+                # 玩家1获胜，更新积分
+                self.players[0].total_score += score1
+                self.players[1].total_score -= score1
                 return self.players[1]
         else:
             # 简化处理：返回得分最高的玩家
@@ -345,7 +351,11 @@ class OFCPoker:
                 total_score = 0
                 for j, other_player in enumerate(self.players):
                     if i != j and not other_player.folded:
-                        total_score += self.calculate_score(player, other_player)
+                        player_score = self.calculate_score(player, other_player)
+                        total_score += player_score
+                        # 更新积分
+                        player.total_score += player_score
+                        other_player.total_score -= player_score
                 if total_score > best_score:
                     best_score = total_score
                     winner = player

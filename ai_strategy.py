@@ -172,88 +172,6 @@ class AIPlayer(Player):
         total_score = top_score + middle_score + bottom_score
         return total_score
     
-    def decide_action(self, game):
-        # AI下注决策
-        if self.difficulty == 'easy':
-            return self.easy_bet_strategy(game)
-        elif self.difficulty == 'medium':
-            return self.medium_bet_strategy(game)
-        else:  # hard
-            return self.hard_bet_strategy(game)
-    
-    def easy_bet_strategy(self, game):
-        # 简单AI下注策略：基于手牌强度的基本决策
-        hand_strength = self.evaluate_overall_strength(game)
-        
-        if hand_strength >= 15:
-            # 强牌：加注
-            raise_amount = min(game.table.current_bet * 2, self.chips)
-            return ('raise', raise_amount)
-        elif hand_strength >= 8:
-            # 中等牌：跟注
-            call_amount = game.table.current_bet - self.bet
-            if call_amount <= self.chips:
-                return ('call', call_amount)
-            else:
-                return ('fold', 0)
-        else:
-            # 弱牌：弃牌
-            return ('fold', 0)
-    
-    def medium_bet_strategy(self, game):
-        # 中等AI下注策略：考虑位置和pot赔率
-        hand_strength = self.evaluate_overall_strength(game)
-        position = self.evaluate_position(game)
-        pot_odds = self.calculate_pot_odds(game)
-        
-        if hand_strength >= 18:
-            # 强牌：加注
-            raise_amount = min(game.table.current_bet * 2, self.chips)
-            return ('raise', raise_amount)
-        elif hand_strength >= 10:
-            # 中等牌：根据位置和赔率决定
-            if position > 0.5 or pot_odds > 2:
-                call_amount = game.table.current_bet - self.bet
-                if call_amount <= self.chips:
-                    return ('call', call_amount)
-            return ('fold', 0)
-        else:
-            # 弱牌：弃牌
-            return ('fold', 0)
-    
-    def hard_bet_strategy(self, game):
-        # 高级AI下注策略：综合考虑多种因素
-        hand_strength = self.evaluate_overall_strength(game)
-        position = self.evaluate_position(game)
-        pot_odds = self.calculate_pot_odds(game)
-        
-        # 诈唬可能性
-        bluff_chance = 0.15 if position > 0.6 else 0.05
-        
-        if hand_strength >= 20:
-            # 超强牌：大额加注
-            raise_amount = min(game.table.current_bet * 3, self.chips)
-            return ('raise', raise_amount)
-        elif hand_strength >= 15:
-            # 强牌：适中加注
-            raise_amount = min(game.table.current_bet * 1.5, self.chips)
-            return ('raise', raise_amount)
-        elif hand_strength >= 10:
-            # 中等牌：根据位置和赔率决定
-            if position > 0.5 or pot_odds > 2.5:
-                call_amount = game.table.current_bet - self.bet
-                if call_amount <= self.chips:
-                    return ('call', call_amount)
-            return ('fold', 0)
-        else:
-            # 弱牌：考虑诈唬
-            if random.random() < bluff_chance and position > 0.6:
-                # 尝试诈唬
-                bluff_amount = min(game.table.current_bet * 2, self.chips // 2)
-                if bluff_amount > 0:
-                    return ('raise', bluff_amount)
-            return ('fold', 0)
-    
     def evaluate_overall_strength(self, game):
         # 评估整体手牌强度
         top_strength = self.evaluate_hand_strength(game, self.hand['top'])
@@ -261,18 +179,6 @@ class AIPlayer(Player):
         bottom_strength = self.evaluate_hand_strength(game, self.hand['bottom'])
         
         return top_strength + middle_strength + bottom_strength
-    
-    def evaluate_position(self, game):
-        # 评估位置优势
-        num_players = len(game.players)
-        position = game.players.index(self)
-        return position / (num_players - 1) if num_players > 1 else 0.5
-    
-    def calculate_pot_odds(self, game):
-        # 计算pot赔率
-        if game.table.current_bet == 0:
-            return 1.0
-        return game.table.pot / game.table.current_bet
     
     def load_learning_data(self):
         """加载学习数据"""
@@ -390,12 +296,6 @@ class AIPlayer(Player):
 class AIStrategy:
     def __init__(self):
         pass
-    
-    def suggest_action(self, game, player):
-        # 为AI玩家提供行动建议
-        if isinstance(player, AIPlayer):
-            return player.decide_action(game)
-        return ('fold', 0)
     
     def suggest_placement(self, game, player):
         # 为AI玩家提供摆牌建议

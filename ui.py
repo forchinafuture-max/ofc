@@ -18,7 +18,9 @@ class GameUI:
         print("---------------------------------------")
         
         for player in game.players:
-            status = "(行动中)" if game.players.index(player) == game.table.action_player else ""
+            # 由于game对象没有table属性，暂时注释掉
+            # status = "(行动中)" if game.players.index(player) == game.table.action_player else ""
+            status = ""
             print(f"{player.name}: {status}")
         
         print("---------------------------------------")
@@ -64,7 +66,7 @@ class GameUI:
             
             # 选择要摆放的牌
             while True:
-                card_choice = input("请选择要摆放的牌 (1-{})".format(len(temp_cards)) + ": ")
+                card_choice = input("请选择要摆放的牌 (1-{})".format(len(temp_cards)) + ": ").strip()
                 if card_choice.isdigit():
                     card_idx = int(card_choice) - 1
                     if 0 <= card_idx < len(temp_cards):
@@ -118,7 +120,7 @@ class GameUI:
         # 检查是否是RLAIPlayer，如果是，则使用其强化学习策略
         if hasattr(player, 'place_cards_strategy'):
             player.place_cards_strategy(game)
-        else:
+        elif ai_strategy:
             # 获取AI摆牌建议
             placement = ai_strategy.suggest_placement(game, player)
             
@@ -126,6 +128,29 @@ class GameUI:
             player.hand['top'] = placement['top']
             player.hand['middle'] = placement['middle']
             player.hand['bottom'] = placement['bottom']
+            player.hand['temp'] = []
+            
+            print(f"{player.name}摆牌完成！")
+            self.display_player_hand(player)
+        else:
+            # 如果ai_strategy为None，使用简单的摆牌策略
+            temp_cards = player.hand['temp']
+            
+            # 简单策略：按牌值排序，然后分配到不同区域
+            temp_cards.sort(key=lambda x: x.value, reverse=True)
+            
+            # 顶部区域最多3张
+            player.hand['top'] = temp_cards[:3]
+            
+            # 中部区域最多5张
+            remaining_cards = temp_cards[3:]
+            player.hand['middle'] = remaining_cards[:5]
+            
+            # 底部区域最多5张
+            remaining_cards = remaining_cards[5:]
+            player.hand['bottom'] = remaining_cards[:5]
+            
+            # 清空临时区域
             player.hand['temp'] = []
             
             print(f"{player.name}摆牌完成！")
@@ -307,9 +332,11 @@ class GameUI:
             input()
     
     def display_round_info(self, game):
-        print(f"\n第 {game.table.round} 轮")
+        print(f"\n第 {game.current_round} 轮")
         
-        if game.table.fantasy_mode:
+        # 检查是否有玩家进入范特西模式
+        has_fantasy_players = any(getattr(player, 'fantasy_mode', False) for player in game.players)
+        if has_fantasy_players:
             print("[范特西模式] - 头道牌型为QQ或更大！")
     
     def display_busted_warning(self, game, player):
@@ -462,9 +489,9 @@ class GameUI:
         # 按牌型分组
         rank_groups = {}
         for card in temp_cards:
-            if card.rank not in rank_groups:
-                rank_groups[card.rank] = []
-            rank_groups[card.rank].append(card)
+            if card.value not in rank_groups:
+                rank_groups[card.value] = []
+            rank_groups[card.value].append(card)
         # 按牌型长度排序（四条 > 三条 > 对子 > 单牌）
         sorted_groups = sorted(rank_groups.items(), key=lambda x: len(x[1]), reverse=True)
         for rank, cards in sorted_groups:
@@ -483,10 +510,10 @@ class GameUI:
         print("           花色排列显示")
         print("=======================================")
         # 按花色分组
-        suit_map = {'S': 'S', 'H': 'H', 'D': 'D', 'C': 'C'}
+        suit_map = {'♠': 'S', '♥': 'H', '♦': 'D', '♣': 'C'}
         suit_groups = {'S': [], 'H': [], 'D': [], 'C': []}
         for card in temp_cards:
-            ascii_suit = suit_map.get(card.suit, '?')
+            ascii_suit = suit_map.get(card.suit, 'S')  # 默认为黑桃
             suit_groups[ascii_suit].append(card)
         # 按花色显示
         for suit, cards in suit_groups.items():

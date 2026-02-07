@@ -309,8 +309,8 @@ class RLAgent:
         3. 中部区域的牌（按值排序，包含花色信息）
         4. 底部区域的牌（按值排序，包含花色信息）
         5. 当前游戏轮次
-        6. 玩家筹码量
-        7. 当前锅底大小
+        6. 玩家筹码量（如果存在）
+        7. 当前锅底大小（如果存在）
         """
         # 待摆放的牌
         temp_cards = sorted(player.hand.get('temp', []), key=lambda x: (x.value, x.suit))
@@ -330,7 +330,7 @@ class RLAgent:
         round_num = game.table.round if hasattr(game, 'table') and hasattr(game.table, 'round') else 1
         
         # 玩家筹码量
-        chips = player.chips
+        chips = getattr(player, 'chips', 1000)  # 默认值1000
         
         # 当前锅底大小
         pot_size = game.table.pot if hasattr(game, 'table') and hasattr(game.table, 'pot') else 0
@@ -993,6 +993,95 @@ class RLAgent:
         
         return potential
     
+    def predict_opponent_hand_strength(self, game, player):
+        """
+        预测对手的可能牌型强度
+        基于已看到的公共牌和对手的行为模式
+        """
+        # 简单的对手模型：假设对手的牌型强度分布
+        # 实际应用中可以基于历史数据和对手行为进行更复杂的预测
+        import random
+        
+        # 预测对手各区域的牌型强度
+        # 顶部区域（3张牌）：可能的强度范围 0-4
+        opponent_top_strength = random.uniform(0, 4)
+        # 中部区域（5张牌）：可能的强度范围 0-9
+        opponent_middle_strength = random.uniform(0, 9)
+        # 底部区域（5张牌）：可能的强度范围 0-9
+        opponent_bottom_strength = random.uniform(0, 9)
+        
+        # 确保牌型顺序合理
+        if opponent_top_strength > opponent_middle_strength:
+            opponent_top_strength = opponent_middle_strength * 0.8
+        if opponent_middle_strength > opponent_bottom_strength:
+            opponent_middle_strength = opponent_bottom_strength * 0.8
+        
+        return opponent_top_strength, opponent_middle_strength, opponent_bottom_strength
+    
+    def calculate_relative_strength(self, player_strengths, opponent_strengths):
+        """
+        计算相对于对手的牌型强度
+        """
+        top_relative = player_strengths[0] - opponent_strengths[0]
+        middle_relative = player_strengths[1] - opponent_strengths[1]
+        bottom_relative = player_strengths[2] - opponent_strengths[2]
+        
+        # 计算总相对强度
+        total_relative = top_relative * 0.3 + middle_relative * 0.4 + bottom_relative * 0.3
+        
+        return total_relative
+    
+    def calculate_card_potential_enhanced(self, cards, remaining_cards=0):
+        """
+        增强的牌型潜力计算
+        考虑更多潜在发展可能性
+        """
+        if not cards:
+            return 0
+        
+        # 基础潜力计算
+        base_potential = self.calculate_card_potential(cards)
+        
+        # 增强的潜力因素
+        enhanced_potential = base_potential
+        
+        # 1. 考虑顺子潜力的连续性
+        sorted_ranks = sorted([card.value for card in cards])
+        consecutive_count = 1
+        max_consecutive = 1
+        
+        for i in range(1, len(sorted_ranks)):
+            if sorted_ranks[i] == sorted_ranks[i-1] + 1:
+                consecutive_count += 1
+                max_consecutive = max(max_consecutive, consecutive_count)
+            else:
+                consecutive_count = 1
+        
+        # 连续牌的额外奖励
+        if max_consecutive >= 3:
+            enhanced_potential += max_consecutive * 0.8
+        
+        # 2. 考虑花色分布的均匀性
+        suit_counts = {}
+        for card in cards:
+            suit_counts[card.suit] = suit_counts.get(card.suit, 0) + 1
+        
+        # 同花潜力的额外奖励
+        max_suit = max(suit_counts.values()) if suit_counts else 0
+        if max_suit >= 3:
+            enhanced_potential += max_suit * 0.6
+        
+        # 3. 考虑高牌的价值
+        high_cards = [card.value for card in cards if card.value >= 10]
+        enhanced_potential += len(high_cards) * 0.3
+        
+        # 4. 考虑剩余牌数的影响
+        if remaining_cards > 0:
+            # 剩余牌越多，潜力越大
+            enhanced_potential *= (1 + remaining_cards * 0.1)
+        
+        return enhanced_potential
+    
     def calculate_win_probability(self, game, player, action, state):
         """
         计算当前摆法的获胜概率，考虑潜在的牌型发展
@@ -1017,14 +1106,23 @@ class RLAgent:
         
         # 计算总牌数，判断游戏阶段
         total_cards = len(temp_hand['top']) + len(temp_hand['middle']) + len(temp_hand['bottom'])
+        remaining_cards = len(temp_hand['temp'])
+        
+        # 游戏阶段判断
+        is_first_round = total_cards <= 5  # 第一轮：摆放前5张牌
         is_early_stage = total_cards < 8  # 早期阶段：总牌数少于8张
         is_mid_stage = 8 <= total_cards < 12  # 中期阶段
         is_late_stage = total_cards >= 12  # 后期阶段
+        is_final_stage = remaining_cards == 0  # 最终阶段：所有牌都已摆放
         
         # 计算牌型强度
         top_strength = game.evaluate_hand(temp_hand['top'])
         middle_strength = game.evaluate_hand(temp_hand['middle'])
         bottom_strength = game.evaluate_hand(temp_hand['bottom'])
+        player_strengths = (top_strength, middle_strength, bottom_strength)
+        
+        # 计算总强度
+        total_strength = top_strength + middle_strength + bottom_strength
         
         # 检查是否爆牌
         is_busted = False
@@ -1032,10 +1130,10 @@ class RLAgent:
             if not (top_strength <= middle_strength <= bottom_strength):
                 is_busted = True
         
-        # 计算各区域的潜在发展潜力
-        top_potential = self.calculate_card_potential(temp_hand['top'])
-        middle_potential = self.calculate_card_potential(temp_hand['middle'])
-        bottom_potential = self.calculate_card_potential(temp_hand['bottom'])
+        # 计算各区域的潜在发展潜力（增强版）
+        top_potential = self.calculate_card_potential_enhanced(temp_hand['top'], remaining_cards)
+        middle_potential = self.calculate_card_potential_enhanced(temp_hand['middle'], remaining_cards)
+        bottom_potential = self.calculate_card_potential_enhanced(temp_hand['bottom'], remaining_cards)
         total_potential = top_potential + middle_potential + bottom_potential
         
         # 区域牌数调整
@@ -1071,22 +1169,46 @@ class RLAgent:
             else:
                 order_adj = -0.3
         
+        # 预测对手的牌型强度
+        opponent_strengths = self.predict_opponent_hand_strength(game, player)
+        
+        # 计算相对强度
+        relative_strength = self.calculate_relative_strength(player_strengths, opponent_strengths)
+        
         # 基础获胜概率
         base_prob = 0.5
         
-        # 根据牌型强度调整概率
-        total_strength = top_strength + middle_strength + bottom_strength
-        
-        # 根据游戏阶段调整强度权重
-        if is_early_stage:
-            # 早期阶段降低顶道强度的权重，增加底道权重
+        # 根据游戏阶段和轮次设计不同的评估逻辑
+        if is_first_round:
+            # 第一轮评估逻辑：更注重牌型潜力和灵活性
+            # 1. 牌型强度权重较低
+            prob_adjustment = (top_strength * 0.01 + middle_strength * 0.02 + bottom_strength * 0.03)
+            # 2. 牌型潜力权重较高
+            prob_adjustment += total_potential * 0.06
+            # 3. 区域分布平衡奖励
+            if len(temp_hand['top']) <= 1 and len(temp_hand['middle']) <= 2 and len(temp_hand['bottom']) <= 2:
+                prob_adjustment += 0.1
+            # 4. 避免过早填满区域
+            if len(temp_hand['top']) == 3:
+                prob_adjustment -= 0.15
+            if len(temp_hand['middle']) >= 4 or len(temp_hand['bottom']) >= 4:
+                prob_adjustment -= 0.1
+        elif is_early_stage:
+            # 早期阶段评估逻辑：平衡潜力和当前强度
+            # 降低顶道强度的权重，增加底道权重
             prob_adjustment = (top_strength * 0.02 + middle_strength * 0.03 + bottom_strength * 0.06)
+            # 中等潜力权重
+            prob_adjustment += total_potential * 0.04
         elif is_mid_stage:
-            # 中期阶段平衡权重
+            # 中期阶段评估逻辑：平衡权重
             prob_adjustment = total_strength * 0.04
+            # 中等潜力权重
+            prob_adjustment += total_potential * 0.03
         else:
-            # 后期阶段正常权重
+            # 后期阶段评估逻辑：更注重当前强度
             prob_adjustment = total_strength * 0.05
+            # 较低潜力权重
+            prob_adjustment += total_potential * 0.02
         
         # 增加对两对牌型的额外奖励
         if middle_strength == 2:  # 中部区域两对
@@ -1094,8 +1216,8 @@ class RLAgent:
         if bottom_strength == 2:  # 底部区域两对
             prob_adjustment += 0.06
         
-        # 根据牌型潜力调整概率
-        prob_adjustment += total_potential * 0.03  # 增加牌型潜力的权重
+        # 根据相对强度调整概率
+        prob_adjustment += relative_strength * 0.05
         
         # 根据区域牌数调整概率
         prob_adjustment += top_count_adj + middle_count_adj + bottom_count_adj
@@ -1106,6 +1228,17 @@ class RLAgent:
         # 根据是否爆牌调整概率
         if is_busted:
             prob_adjustment -= 0.4
+        
+        # 最终阶段的额外调整
+        if is_final_stage:
+            # 所有牌都已摆放，更注重最终牌型强度
+            if top_strength <= middle_strength <= bottom_strength:
+                prob_adjustment += 0.1
+            # 对强牌型给予额外奖励
+            if bottom_strength >= 7:  # 葫芦及以上
+                prob_adjustment += 0.15
+            if middle_strength >= 5:  # 顺子及以上
+                prob_adjustment += 0.1
         
         # 计算最终概率
         win_prob = min(0.99, max(0.01, base_prob + prob_adjustment))

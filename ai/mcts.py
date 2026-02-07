@@ -1,13 +1,10 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
-蒙特卡洛树搜索（MCTS）模块
-用于OFC扑克游戏的决策过程
+MCTS 树搜索
 """
 
 import math
 import random
-from config.rules import MCTS_CONFIG
+from config.loader import config_loader
 
 class MCTSNode:
     """
@@ -76,7 +73,7 @@ class MCTSNode:
         """
         # 使用UCT公式选择子节点
         # UCB1公式: value/visits + c * sqrt(2*ln(parent_visits)/visits)
-        c = MCTS_CONFIG['exploration_weight']  # 探索常数，从配置文件读取
+        c = config_loader.get_mcts_config('exploration_weight')  # 探索常数，从配置文件读取
         best_child = None
         best_score = -float('inf')
         
@@ -152,7 +149,7 @@ class MCTSNode:
             return (new_player, new_game)
         
         # 将牌放到指定区域
-        new_player.hand[area].append(card)
+        new_player.add_card(card, area)
         new_player.hand['temp'].pop(card_index)
         
         return (new_player, new_game)
@@ -275,7 +272,7 @@ class MCTS:
         Args:
             iterations: 搜索迭代次数，默认使用配置文件中的值
         """
-        self.iterations = iterations or MCTS_CONFIG['rollout_count']
+        self.iterations = iterations or config_loader.get_mcts_config('rollout_count')
     
     def search(self, initial_state):
         """
@@ -306,9 +303,11 @@ class MCTS:
             node.backpropagate(value)
         
         # 选择访问次数最多的子节点
+        if not root.children:
+            return None
         best_child = max(root.children, key=lambda c: c.visits)
         return best_child.action
-
+    
     def best_action(self, root):
         """
         选择最佳动作
