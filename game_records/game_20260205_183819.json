@@ -1,0 +1,63 @@
+{
+  "timestamp": "2026-02-05T18:38:19.504662",
+  "players": [
+    {
+      "name": "玩家a",
+      "total_score": 6,
+      "hand": {
+        "top": [
+          "K♣",
+          "Q♥",
+          "5♥"
+        ],
+        "middle": [
+          "3♥",
+          "6♥",
+          "2♠",
+          "6♠",
+          "8♦"
+        ],
+        "bottom": [
+          "J♦",
+          "Q♣",
+          "8♥",
+          "J♥",
+          "Q♦"
+        ]
+      },
+      "is_ai": false,
+      "fantasy_mode": false
+    },
+    {
+      "name": "AI (中等)",
+      "total_score": 0,
+      "hand": {
+        "top": [
+          "A♥",
+          "10♣",
+          "7♦"
+        ],
+        "middle": [
+          "A♦",
+          "A♠",
+          "4♠",
+          "Q♠",
+          "J♠"
+        ],
+        "bottom": [
+          "A♣",
+          "9♥",
+          "7♠",
+          "10♦",
+          "10♠"
+        ]
+      },
+      "is_ai": true,
+      "fantasy_mode": false
+    }
+  ],
+  "game_details": {
+    "fantasy_mode": false,
+    "player_count": 2
+  }
+}

@@ -1,0 +1,63 @@
+{
+  "timestamp": "2026-02-07T13:17:28.265411",
+  "players": [
+    {
+      "name": "AI Player 1",
+      "total_score": 0,
+      "hand": {
+        "top": [
+          "4H",
+          "QC",
+          "KD"
+        ],
+        "middle": [
+          "KS",
+          "10H",
+          "8C",
+          "6S",
+          "QS"
+        ],
+        "bottom": [
+          "3H",
+          "8H",
+          "4S",
+          "7H",
+          "9D"
+        ]
+      },
+      "is_ai": true,
+      "fantasy_mode": false
+    },
+    {
+      "name": "AI Player 2",
+      "total_score": 0,
+      "hand": {
+        "top": [
+          "QD",
+          "7S",
+          "3C"
+        ],
+        "middle": [
+          "3S",
+          "9C",
+          "5H",
+          "JS",
+          "AD"
+        ],
+        "bottom": [
+          "AC",
+          "9H",
+          "KC",
+          "7C",
+          "7D"
+        ]
+      },
+      "is_ai": true,
+      "fantasy_mode": false
+    }
+  ],
+  "game_details": {
+    "fantasy_mode": false,
+    "player_count": 2
+  }
+}
