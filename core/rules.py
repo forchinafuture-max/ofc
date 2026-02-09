@@ -27,6 +27,184 @@ class RuleEngine:
             return self.evaluate_5_card_hand(cards)
         else:
             return 0
+
+    def _hand_profile(self, cards):
+        """
+        计算手牌档位与比较信息
+
+        Returns:
+            dict: {
+                'category': 原始牌型强度,
+                'category_rank': 用于跨牌数比较的强度,
+                'tiebreaker': 用于同牌型比较的权重列表
+            }
+        """
+        if len(cards) == 3:
+            return self._profile_3_card(cards)
+        if len(cards) == 5:
+            return self._profile_5_card(cards)
+        return {'category': 0, 'category_rank': 0, 'tiebreaker': []}
+
+    def _profile_3_card(self, cards):
+        if len(cards) < 3:
+            return {'category': 0, 'category_rank': 0, 'tiebreaker': []}
+
+        ranks = [card.value for card in cards]
+        rank_counts = {}
+        for rank in ranks:
+            rank_counts[rank] = rank_counts.get(rank, 0) + 1
+
+        counts = sorted(rank_counts.values(), reverse=True)
+        sorted_ranks = sorted(rank_counts.items(), key=lambda x: (-x[1], -x[0]))
+
+        if counts == [3]:
+            # 三条
+            trip_rank = sorted_ranks[0][0]
+            return {
+                'category': 2,
+                'category_rank': 3,
+                'tiebreaker': [trip_rank],
+            }
+        if counts == [2, 1]:
+            # 一对
+            pair_rank = sorted_ranks[0][0]
+            kicker = sorted([r for r, c in rank_counts.items() if c == 1], reverse=True)
+            return {
+                'category': 1,
+                'category_rank': 1,
+                'tiebreaker': [pair_rank] + kicker,
+            }
+
+        # 高牌
+        high_cards = sorted(ranks, reverse=True)
+        return {
+            'category': 0,
+            'category_rank': 0,
+            'tiebreaker': high_cards,
+        }
+
+    def _profile_5_card(self, cards):
+        if len(cards) < 5:
+            return {'category': 0, 'category_rank': 0, 'tiebreaker': []}
+
+        ranks = [card.value for card in cards]
+        suits = [card.suit for card in cards]
+        ranks_sorted = sorted(ranks)
+
+        is_flush = all(suit == suits[0] for suit in suits)
+        straight_high = self._straight_high_card(ranks_sorted)
+        is_straight = straight_high is not None
+
+        rank_counts = {}
+        for rank in ranks:
+            rank_counts[rank] = rank_counts.get(rank, 0) + 1
+
+        counts = sorted(rank_counts.values(), reverse=True)
+        sorted_ranks = sorted(rank_counts.items(), key=lambda x: (-x[1], -x[0]))
+
+        # 皇家同花顺 / 同花顺
+        if is_straight and is_flush:
+            if straight_high == 14:
+                return {
+                    'category': 9,
+                    'category_rank': 9,
+                    'tiebreaker': [straight_high],
+                }
+            return {
+                'category': 8,
+                'category_rank': 8,
+                'tiebreaker': [straight_high],
+            }
+
+        # 四条
+        if counts == [4, 1]:
+            four_rank = sorted_ranks[0][0]
+            kicker = sorted([r for r, c in rank_counts.items() if c == 1], reverse=True)
+            return {
+                'category': 7,
+                'category_rank': 7,
+                'tiebreaker': [four_rank] + kicker,
+            }
+
+        # 葫芦
+        if counts == [3, 2]:
+            trip_rank = sorted_ranks[0][0]
+            pair_rank = sorted_ranks[1][0]
+            return {
+                'category': 6,
+                'category_rank': 6,
+                'tiebreaker': [trip_rank, pair_rank],
+            }
+
+        # 同花
+        if is_flush:
+            return {
+                'category': 5,
+                'category_rank': 5,
+                'tiebreaker': sorted(ranks, reverse=True),
+            }
+
+        # 顺子
+        if is_straight:
+            return {
+                'category': 4,
+                'category_rank': 4,
+                'tiebreaker': [straight_high],
+            }
+
+        # 三条
+        if counts == [3, 1, 1]:
+            trip_rank = sorted_ranks[0][0]
+            kickers = sorted([r for r, c in rank_counts.items() if c == 1], reverse=True)
+            return {
+                'category': 3,
+                'category_rank': 3,
+                'tiebreaker': [trip_rank] + kickers,
+            }
+
+        # 两对
+        if counts == [2, 2, 1]:
+            pairs = [r for r, c in sorted_ranks if c == 2]
+            pairs = sorted(pairs, reverse=True)
+            kicker = sorted([r for r, c in rank_counts.items() if c == 1], reverse=True)
+            return {
+                'category': 2,
+                'category_rank': 2,
+                'tiebreaker': pairs + kicker,
+            }
+
+        # 一对
+        if counts == [2, 1, 1, 1]:
+            pair_rank = sorted_ranks[0][0]
+            kickers = sorted([r for r, c in rank_counts.items() if c == 1], reverse=True)
+            return {
+                'category': 1,
+                'category_rank': 1,
+                'tiebreaker': [pair_rank] + kickers,
+            }
+
+        # 高牌
+        return {
+            'category': 0,
+            'category_rank': 0,
+            'tiebreaker': sorted(ranks, reverse=True),
+        }
+
+    def _straight_high_card(self, ranks_sorted):
+        """
+        计算顺子高张，A2345 视为 5 高顺
+        """
+        unique_ranks = sorted(set(ranks_sorted))
+        if len(unique_ranks) != 5:
+            return None
+
+        if unique_ranks == [2, 3, 4, 5, 14]:
+            return 5
+
+        for i in range(1, len(unique_ranks)):
+            if unique_ranks[i] != unique_ranks[i - 1] + 1:
+                return None
+        return unique_ranks[-1]
     
     def evaluate_3_card_hand(self, cards):
         """
@@ -164,61 +342,26 @@ class RuleEngine:
             -1: hand1 < hand2
             0: hand1 == hand2
         """
-        # 无论牌数是否相同，都先使用evaluate_hand评估强度
-        score1 = self.evaluate_hand(hand1)
-        score2 = self.evaluate_hand(hand2)
-        
-        if score1 > score2:
+        profile1 = self._hand_profile(hand1)
+        profile2 = self._hand_profile(hand2)
+
+        if profile1['category_rank'] > profile2['category_rank']:
             return 1
-        elif score1 < score2:
+        if profile1['category_rank'] < profile2['category_rank']:
             return -1
-        else:
-            # 分数相同时，根据牌型进行详细比较
-            return self._compare_same_strength_hands(hand1, hand2)
+
+        return self._compare_tiebreaker(profile1['tiebreaker'], profile2['tiebreaker'])
     
-    def _compare_same_strength_hands(self, hand1, hand2):
-        """
-        比较相同强度值的手牌
-        
-        Args:
-            hand1: 第一手牌
-            hand2: 第二手牌
-            
-        Returns:
-            1: hand1 > hand2
-            -1: hand1 < hand2
-            0: hand1 == hand2
-        """
-        ranks1 = sorted([card.value for card in hand1], reverse=True)
-        ranks2 = sorted([card.value for card in hand2], reverse=True)
-        
-        # 计算牌型的详细信息
-        rank_counts1 = {}
-        for rank in [card.value for card in hand1]:
-            rank_counts1[rank] = rank_counts1.get(rank, 0) + 1
-        
-        rank_counts2 = {}
-        for rank in [card.value for card in hand2]:
-            rank_counts2[rank] = rank_counts2.get(rank, 0) + 1
-        
-        # 按出现次数排序（降序），然后按牌值排序（降序）
-        sorted_ranks1 = sorted(rank_counts1.items(), key=lambda x: (-x[1], -x[0]))
-        sorted_ranks2 = sorted(rank_counts2.items(), key=lambda x: (-x[1], -x[0]))
-        
-        # 比较排序后的结果
-        for (r1, c1), (r2, c2) in zip(sorted_ranks1, sorted_ranks2):
-            if r1 > r2:
+    def _compare_tiebreaker(self, tiebreaker1, tiebreaker2):
+        for value1, value2 in zip(tiebreaker1, tiebreaker2):
+            if value1 > value2:
                 return 1
-            elif r1 < r2:
+            if value1 < value2:
                 return -1
-        
-        # 如果还是相同，比较所有牌的大小（降序）
-        for r1, r2 in zip(ranks1, ranks2):
-            if r1 > r2:
-                return 1
-            elif r1 < r2:
-                return -1
-        
+        if len(tiebreaker1) > len(tiebreaker2):
+            return 1
+        if len(tiebreaker1) < len(tiebreaker2):
+            return -1
         return 0
     
     def check_busted(self, player):

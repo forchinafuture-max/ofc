@@ -5,6 +5,7 @@ MCTS 树搜索
 import math
 import random
 from config.loader import config_loader
+from ai.evaluation import evaluate_player_state
 
 class MCTSNode:
     """
@@ -79,10 +80,11 @@ class MCTSNode:
         
         for child in self.children:
             if child.visits == 0:
-                # 对于未访问的节点，给予高优先级
                 score = float('inf')
             else:
-                score = (child.value / child.visits) + c * math.sqrt(2 * math.log(self.visits) / child.visits)
+                score = (child.value / child.visits) + c * math.sqrt(
+                    math.log(self.visits + 1) / child.visits
+                )
             if score > best_score:
                 best_score = score
                 best_child = child
@@ -99,8 +101,10 @@ class MCTSNode:
         if not self.untried_actions:
             return self.select_child()
         
-        # 选择一个未尝试的动作
-        action = random.choice(self.untried_actions)
+        # 选择一个未尝试的动作（带启发）
+        action = self._select_promising_action(self.untried_actions)
+        if action is None:
+            return self.select_child()
         self.untried_actions.remove(action)
         
         # 创建新的游戏状态
@@ -129,7 +133,6 @@ class MCTSNode:
         player, game = state
         card_index, area_index = action
         
-        # 创建玩家的深拷贝
         import copy
         new_player = copy.deepcopy(player)
         new_game = copy.deepcopy(game)
@@ -171,82 +174,20 @@ class MCTSNode:
         sim_game = copy.deepcopy(game)
         sim_state = (sim_player, sim_game)
         
-        # 模拟剩余的摆牌过程
+        # 模拟剩余的摆牌过程（使用启发式 rollout）
         temp_cards = sim_player.hand.get('temp', [])
-        
+
         while temp_cards:
-            # 随机选择一个合法动作
             legal_actions = self.get_legal_actions(sim_state)
             if not legal_actions:
                 break
-            
-            action = random.choice(legal_actions)
+
+            action = self._rollout_policy(sim_state, legal_actions)
             sim_state = self.simulate_action(sim_state, action)
             sim_player, sim_game = sim_state
             temp_cards = sim_player.hand.get('temp', [])
-        
-        # 评估最终的手牌
-        top_cards = sim_player.hand.get('top', [])
-        middle_cards = sim_player.hand.get('middle', [])
-        bottom_cards = sim_player.hand.get('bottom', [])
-        
-        # 计算各区域的牌型强度
-        try:
-            top_strength = sim_game.evaluate_hand(top_cards)
-            middle_strength = sim_game.evaluate_hand(middle_cards)
-            bottom_strength = sim_game.evaluate_hand(bottom_cards)
-        except:
-            # 如果评估失败，返回默认值
-            top_strength = 0
-            middle_strength = 0
-            bottom_strength = 0
-        
-        # 计算价值
-        value = 0
-        
-        # 1. 爆牌风险惩罚
-        try:
-            is_busted = sim_game.check_busted(sim_player)
-            if is_busted:
-                value -= 2.0  # 爆牌的严重惩罚
-            else:
-                value += 1.0  # 未爆牌的奖励
-        except:
-            pass
-        
-        # 2. 区域强度顺序奖励
-        if top_strength <= middle_strength <= bottom_strength:
-            value += 1.0
-        else:
-            value -= 1.0
-        
-        # 3. 各区域牌型强度奖励
-        value += top_strength * 0.1
-        value += middle_strength * 0.2
-        value += bottom_strength * 0.3
-        
-        # 4. 幻想模式奖励
-        try:
-            # 检查是否满足进入幻想模式的条件
-            has_top_pair = False
-            if len(top_cards) >= 2:
-                # 检查顶部区域是否有对子
-                rank_counts = {}
-                for card in top_cards:
-                    rank_counts[card.value] = rank_counts.get(card.value, 0) + 1
-                pairs = [r for r, c in rank_counts.items() if c >= 2]
-                if pairs:
-                    high_pair = max(pairs)
-                    if high_pair >= 12:  # QQ及以上
-                        value += 0.5  # 幻想模式潜力奖励
-        except:
-            pass
-        
-        # 5. 完整手牌奖励
-        if len(top_cards) == 3 and len(middle_cards) == 5 and len(bottom_cards) == 5:
-            value += 0.5  # 完整手牌奖励
-        
-        return value
+
+        return evaluate_player_state(sim_player, sim_game)
     
     def backpropagate(self, value):
         """
@@ -259,7 +200,43 @@ class MCTSNode:
         self.value += value
         
         if self.parent:
-            self.parent.backpropagate(-value)  # 对手的价值是相反的
+            self.parent.backpropagate(value)
+
+    def _select_promising_action(self, actions):
+        if not actions:
+            return None
+        if not self.state:
+            return random.choice(actions)
+
+        best_action = None
+        best_value = -float('inf')
+        for action in actions:
+            next_state = self.simulate_action(self.state, action)
+            player, game = next_state
+            value = evaluate_player_state(player, game)
+            if value > best_value:
+                best_value = value
+                best_action = action
+
+        return best_action or random.choice(actions)
+
+    def _rollout_policy(self, state, actions):
+        if not actions:
+            return None
+
+        if len(actions) == 1:
+            return actions[0]
+
+        best_action = None
+        best_value = -float('inf')
+        for action in actions:
+            next_state = self.simulate_action(state, action)
+            player, game = next_state
+            value = evaluate_player_state(player, game)
+            if value > best_value:
+                best_value = value
+                best_action = action
+        return best_action or random.choice(actions)
 
 class MCTS:
     """
