@@ -5,6 +5,8 @@
 import unittest
 from game.deck import Card
 from core.rules import RuleEngine
+from game.player import Player
+from game.ofc_game import OFCGame
 
 class TestRules(unittest.TestCase):
     """
@@ -100,6 +102,16 @@ class TestRules(unittest.TestCase):
         hand4 = [Card(3, '♠'), Card(3, '♥'), Card(4, '♦'), Card(5, '♣'), Card(6, '♠')]  # 一对3
         # 注意：不同牌数的比较在当前实现中会进行详细比较
         # 这里的结果可能会根据具体实现有所不同
+
+        # 测试跨牌数比较（3张三条 > 5张两对）
+        three_of_a_kind = [Card(10, '♠'), Card(10, '♥'), Card(10, '♦')]
+        two_pair = [Card(9, '♠'), Card(9, '♥'), Card(8, '♦'), Card(8, '♣'), Card(2, '♠')]
+        self.assertEqual(self.rule_engine.compare_hands(three_of_a_kind, two_pair), 1)
+
+        # 测试顺子比较（A2345 作为 5 高顺）
+        wheel = [Card(14, '♠'), Card(2, '♥'), Card(3, '♦'), Card(4, '♣'), Card(5, '♠')]
+        six_high_straight = [Card(2, '♠'), Card(3, '♥'), Card(4, '♦'), Card(5, '♣'), Card(6, '♠')]
+        self.assertEqual(self.rule_engine.compare_hands(wheel, six_high_straight), -1)
     
     def test_calculate_hand_score(self):
         """
@@ -120,6 +132,20 @@ class TestRules(unittest.TestCase):
         # 测试底道皇家同花顺
         bottom_royal = [Card(10, '♠'), Card(11, '♠'), Card(12, '♠'), Card(13, '♠'), Card(14, '♠')]
         self.assertEqual(self.rule_engine.calculate_hand_score(bottom_royal, 'bottom'), 25)
+
+    def test_check_busted(self):
+        game = OFCGame()
+        player = Player("Tester")
+        player.hand['top'] = [Card(6, '♠'), Card(6, '♥'), Card(2, '♦')]
+        player.hand['middle'] = [Card(9, '♠'), Card(9, '♥'), Card(7, '♦'), Card(7, '♣'), Card(3, '♠')]
+        player.hand['bottom'] = [Card(10, '♠'), Card(11, '♠'), Card(12, '♠'), Card(13, '♠'), Card(14, '♠')]
+        self.assertFalse(game.check_busted(player))
+
+        player2 = Player("Tester2")
+        player2.hand['top'] = [Card(14, '♠'), Card(14, '♥'), Card(2, '♦')]
+        player2.hand['middle'] = [Card(10, '♠'), Card(10, '♥'), Card(9, '♦'), Card(8, '♣'), Card(7, '♠')]
+        player2.hand['bottom'] = [Card(11, '♣'), Card(11, '♦'), Card(11, '♥'), Card(5, '♠'), Card(6, '♣')]
+        self.assertTrue(game.check_busted(player2))
 
 if __name__ == '__main__':
     unittest.main()

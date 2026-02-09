@@ -4,6 +4,8 @@ AIStrategy 抽象类 + 启发式策略实现
 
 from abc import ABC, abstractmethod
 from core.hand_state import HandState
+from ai.evaluation import evaluate_player_state
+from core.rules import RuleEngine
 
 class AIStrategy(ABC):
     """
@@ -68,38 +70,36 @@ class HeuristicStrategy(AIStrategy):
         Returns:
             摆放后的手牌状态
         """
-        # 这里实现一个简单的摆放策略
-        # 实际实现可以根据具体需求进行扩展
         import copy
+
         result_state = copy.deepcopy(hand_state)
-        
-        # 获取待摆放的牌
+        rule_engine = RuleEngine()
+
         temp_cards = result_state.get('temp', [])
-        
-        # 简单策略：将牌按价值排序，然后依次放入各个区域
         temp_cards.sort(key=lambda card: card.value, reverse=True)
-        
-        # 先放顶部区域（最多3张）
-        while temp_cards and len(result_state.get('top', [])) < 3:
-            card = temp_cards.pop(0)
-            top_cards = result_state.get('top', [])
-            top_cards.append(card)
-            result_state['top'] = top_cards
-        
-        # 再放中部区域（最多5张）
-        while temp_cards and len(result_state.get('middle', [])) < 5:
-            card = temp_cards.pop(0)
-            middle_cards = result_state.get('middle', [])
-            middle_cards.append(card)
-            result_state['middle'] = middle_cards
-        
-        # 最后放底部区域（最多5张）
-        while temp_cards and len(result_state.get('bottom', [])) < 5:
-            card = temp_cards.pop(0)
-            bottom_cards = result_state.get('bottom', [])
-            bottom_cards.append(card)
-            result_state['bottom'] = bottom_cards
-        
+
+        def can_place(area):
+            return len(result_state.get(area, [])) < (3 if area == 'top' else 5)
+
+        for card in list(temp_cards):
+            best_area = None
+            best_score = -float('inf')
+            for area in ['top', 'middle', 'bottom']:
+                if not can_place(area):
+                    continue
+                simulated = copy.deepcopy(result_state)
+                simulated[area].append(card)
+                simulated['temp'] = [c for c in simulated.get('temp', []) if c != card]
+
+                score = _evaluate_hand_state(simulated, rule_engine)
+                if score > best_score:
+                    best_score = score
+                    best_area = area
+
+            if best_area:
+                result_state[best_area].append(card)
+                result_state['temp'].remove(card)
+
         return result_state
     
     def choose_action(self, player, game):
@@ -212,50 +212,27 @@ class HeuristicStrategy(AIStrategy):
         Returns:
             状态价值
         """
-        value = 0
-        
-        # 评估各区域的牌型强度
-        top_cards = player.hand.get('top', [])
-        middle_cards = player.hand.get('middle', [])
-        bottom_cards = player.hand.get('bottom', [])
-        
-        try:
-            # 计算各区域的牌型强度
-            top_strength = game.evaluate_hand(top_cards)
-            middle_strength = game.evaluate_hand(middle_cards)
-            bottom_strength = game.evaluate_hand(bottom_cards)
-            
-            # 区域强度顺序奖励
-            if top_strength <= middle_strength <= bottom_strength:
-                value += 10
-            else:
-                value -= 5
-            
-            # 各区域牌型强度奖励
-            value += top_strength * 2
-            value += middle_strength * 3
-            value += bottom_strength * 4
-            
-            # 检查爆牌风险
-            is_busted = game.check_busted(player)
-            if is_busted:
-                value -= 50
-            
-            # 检查幻想模式潜力
-            if len(top_cards) >= 2:
-                # 检查顶部区域是否有对子
-                rank_counts = {}
-                for card in top_cards:
-                    rank_counts[card.value] = rank_counts.get(card.value, 0) + 1
-                pairs = [r for r, c in rank_counts.items() if c >= 2]
-                if pairs:
-                    high_pair = max(pairs)
-                    if high_pair >= 12:  # QQ及以上
-                        value += 15
-        except:
-            pass
-        
-        return value
+        return evaluate_player_state(player, game)
+
+
+def _evaluate_hand_state(hand_state, rule_engine):
+    temp_player = _HandStateAdapter(hand_state)
+    class _DummyGame:
+        def __init__(self, engine):
+            self.rule_engine = engine
+        def check_busted(self, player):
+            return self.rule_engine.check_busted(player)
+        def calculate_total_score(self, player):
+            return 0
+        def check_fantasy_mode(self, player):
+            return False
+    dummy_game = _DummyGame(rule_engine)
+    return evaluate_player_state(temp_player, dummy_game)
+
+
+class _HandStateAdapter:
+    def __init__(self, hand_state):
+        self.hand = hand_state
 
 class MCTSStrategy(AIStrategy):
     """
@@ -283,13 +260,31 @@ class MCTSStrategy(AIStrategy):
         Returns:
             摆放后的手牌状态
         """
-        # 这里需要实现一个完整的摆放策略
-        # 由于MCTS是基于单次动作的，我们需要迭代调用它来完成整个摆放过程
         import copy
+
         result_state = copy.deepcopy(hand_state)
-        
-        # 这里可以实现一个基于MCTS的完整摆放策略
-        # 暂时返回原始状态
+        rule_engine = RuleEngine()
+
+        temp_cards = result_state.get('temp', [])
+        while temp_cards:
+            best_area = None
+            best_score = -float('inf')
+            card = temp_cards[0]
+            for area in ['top', 'middle', 'bottom']:
+                if len(result_state.get(area, [])) >= (3 if area == 'top' else 5):
+                    continue
+                simulated = copy.deepcopy(result_state)
+                simulated[area].append(card)
+                simulated['temp'] = simulated['temp'][1:]
+                score = _evaluate_hand_state(simulated, rule_engine)
+                if score > best_score:
+                    best_score = score
+                    best_area = area
+            if best_area:
+                result_state[best_area].append(card)
+            result_state['temp'] = result_state['temp'][1:]
+            temp_cards = result_state.get('temp', [])
+
         return result_state
     
     def choose_action(self, player, game):
@@ -317,37 +312,4 @@ class MCTSStrategy(AIStrategy):
         Returns:
             状态价值
         """
-        # 这里可以实现一个基于MCTS的状态评估
-        # 暂时返回一个简单的评估值
-        value = 0
-        
-        # 评估各区域的牌型强度
-        top_cards = player.hand.get('top', [])
-        middle_cards = player.hand.get('middle', [])
-        bottom_cards = player.hand.get('bottom', [])
-        
-        try:
-            # 计算各区域的牌型强度
-            top_strength = game.evaluate_hand(top_cards)
-            middle_strength = game.evaluate_hand(middle_cards)
-            bottom_strength = game.evaluate_hand(bottom_cards)
-            
-            # 区域强度顺序奖励
-            if top_strength <= middle_strength <= bottom_strength:
-                value += 10
-            else:
-                value -= 5
-            
-            # 各区域牌型强度奖励
-            value += top_strength * 2
-            value += middle_strength * 3
-            value += bottom_strength * 4
-            
-            # 检查爆牌风险
-            is_busted = game.check_busted(player)
-            if is_busted:
-                value -= 50
-        except:
-            pass
-        
-        return value
+        return evaluate_player_state(player, game)

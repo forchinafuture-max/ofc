@@ -4,6 +4,7 @@ AIPlayer，调用策略接口
 
 from game.player import Player
 from ai.strategy import HeuristicStrategy
+from ai.evaluation import evaluate_player_state
 from ai.mcts import MCTS
 
 class AIPlayer(Player):
@@ -111,37 +112,4 @@ class AIPlayer(Player):
         """
         if self.strategy_type == 'heuristic' and self.strategy:
             return self.strategy.evaluate_state(self, game)
-        else:
-            # 简单的状态评估
-            value = 0
-            
-            # 评估各区域的牌型强度
-            top_cards = self.hand.get('top', [])
-            middle_cards = self.hand.get('middle', [])
-            bottom_cards = self.hand.get('bottom', [])
-            
-            try:
-                # 计算各区域的牌型强度
-                top_strength = game.evaluate_hand(top_cards)
-                middle_strength = game.evaluate_hand(middle_cards)
-                bottom_strength = game.evaluate_hand(bottom_cards)
-                
-                # 区域强度顺序奖励
-                if top_strength <= middle_strength <= bottom_strength:
-                    value += 10
-                else:
-                    value -= 5
-                
-                # 各区域牌型强度奖励
-                value += top_strength * 2
-                value += middle_strength * 3
-                value += bottom_strength * 4
-                
-                # 检查爆牌风险
-                is_busted = game.check_busted(self)
-                if is_busted:
-                    value -= 50
-            except:
-                pass
-            
-            return value
+        return evaluate_player_state(self, game)
